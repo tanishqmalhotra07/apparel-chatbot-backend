@@ -26,17 +26,17 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection_name = "apparel_products"
 
-product_collection = None
+product_collection = None # Initialize to None
 
 # Define the ChromaDB collection (ensure it exists and is populated)
 try:
     # Use get_or_create_collection for robustness on initial deploy
-    product_collection = chromadb.PersistentClient(path="./chroma_db").get_or_create_collection(name=collection_name)
+    product_collection = chroma_client.get_or_create_collection(name=collection_name)
     print(f"Connected to ChromaDB collection '{collection_name}'. Contains {product_collection.count()} items.")
 except Exception as e:
     print(f"Error connecting to ChromaDB collection '{collection_name}': {e}")
     print("Please ensure populate_chroma.py has been run successfully OR your data is mounted.")
-    product_collection = None # Set to None if collection not found
+    # product_collection will remain None if an error occurs, correctly triggering the check in find_apparel
 
 # --- Valid Enum Values (Must match your products.json and tool definition) ---
 VALID_GENDERS = {"male", "female", "unisex"}
@@ -196,11 +196,14 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
     current_filters = get_chromadb_filters(gender, master_category, subcategory, color, season, sleeve_length, item_length, category)
     print(f"Stage 1: Performing search with strict filters: {current_filters}")
     try:
-        results = product_collection.query(
-            query_embeddings=[query_embedding],
-            n_results=10, # Increased n_results for better chances of finding more
-            where=current_filters
-        )
+        query_params = {
+            "query_embeddings": [query_embedding],
+            "n_results": 10,
+        }
+        if current_filters: # <--- CRITICAL FIX APPLIED HERE
+            query_params["where"] = current_filters
+
+        results = product_collection.query(**query_params) # Use ** to unpack the dictionary
 
         print(f"\n--- DEBUG: Raw ChromaDB Query Results for current_filters: {current_filters} ---")
         print(f"Results metadata: {results.get('metadatas')}")
@@ -230,11 +233,14 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
     if current_filters or (not gender and not season and not master_category and not category):
         print(f"Stage 2: Performing search with relaxed subcategory, color, lengths. Filters: {current_filters}")
         try:
-            results = product_collection.query(
-                query_embeddings=[query_embedding],
-                n_results=10,
-                where=current_filters
-            )
+            query_params = {
+                "query_embeddings": [query_embedding],
+                "n_results": 10,
+            }
+            if current_filters: # <--- CRITICAL FIX APPLIED HERE
+                query_params["where"] = current_filters
+
+            results = product_collection.query(**query_params) # Use ** to unpack the dictionary
             print(f"\n--- DEBUG: Raw ChromaDB Query Results for relaxed_filters: {current_filters} ---")
             print(f"Results metadata: {results.get('metadatas')}")
             print(f"Results documents: {results.get('documents')}")
@@ -260,16 +266,20 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
     else:
         print("Stage 2: Skipping because no relevant gender, master_category, season, or category filters were provided for this stage.")
 
+
     # --- Stage 3: Relax Master Category, Category (Keep Gender and Season as hard filters) ---
     current_filters = get_chromadb_filters(gender, None, None, None, season, None, None, None)
-    if current_filters: # Only proceed to Stage 3 if gender/season filters are present
+    if current_filters: # This 'if' is already good because current_filters will be {} if gender/season are None
         print(f"Stage 3: Performing search with only gender and season filters (if provided). Filters: {current_filters}")
         try:
-            results = product_collection.query(
-                query_embeddings=[query_embedding],
-                n_results=10,
-                where=current_filters
-            )
+            query_params = {
+                "query_embeddings": [query_embedding],
+                "n_results": 10,
+            }
+            if current_filters: # <--- CRITICAL FIX APPLIED HERE
+                query_params["where"] = current_filters
+
+            results = product_collection.query(**query_params) # Use ** to unpack the dictionary
             print(f"\n--- DEBUG: Raw ChromaDB Query Results for broad_filters: {current_filters} ---")
             print(f"Results metadata: {results.get('metadatas')}")
             print(f"Results documents: {results.get('documents')}")
