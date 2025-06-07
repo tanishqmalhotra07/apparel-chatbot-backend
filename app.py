@@ -26,6 +26,8 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection_name = "apparel_products"
 
+product_collection = None
+
 # Define the ChromaDB collection (ensure it exists and is populated)
 try:
     # Use get_or_create_collection for robustness on initial deploy
