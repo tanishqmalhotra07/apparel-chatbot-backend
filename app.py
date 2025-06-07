@@ -26,17 +26,21 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection_name = "apparel_products"
 
-product_collection = None # Initialize to None
+# Initialize product_collection to None for diagnostic purposes.
+# The following try-except block, which *would* load the collection, is commented out.
+# This ensures the app starts without loading the potentially large ChromaDB index into memory.
+product_collection = None
 
 # Define the ChromaDB collection (ensure it exists and is populated)
-try:
-    # Use get_or_create_collection for robustness on initial deploy
-    product_collection = chroma_client.get_or_create_collection(name=collection_name)
-    print(f"Connected to ChromaDB collection '{collection_name}'. Contains {product_collection.count()} items.")
-except Exception as e:
-    print(f"Error connecting to ChromaDB collection '{collection_name}': {e}")
-    print("Please ensure populate_chroma.py has been run successfully OR your data is mounted.")
-    # product_collection will remain None if an error occurs, correctly triggering the check in find_apparel
+# TEMPORARILY COMMENTED OUT FOR MEMORY DIAGNOSIS ON RENDER
+# try:
+#     # Use get_or_create_collection for robustness on initial deploy
+#     product_collection = chroma_client.get_or_create_collection(name=collection_name)
+#     print(f"Connected to ChromaDB collection '{collection_name}'. Contains {product_collection.count()} items.")
+# except Exception as e:
+#     print(f"Error connecting to ChromaDB collection '{collection_name}': {e}")
+#     print("Please ensure populate_chroma.py has been run successfully OR your data is mounted.")
+#     # product_collection will remain None if an error occurs, correctly triggering the check in find_apparel
 
 # --- Valid Enum Values (Must match your products.json and tool definition) ---
 VALID_GENDERS = {"male", "female", "unisex"}
