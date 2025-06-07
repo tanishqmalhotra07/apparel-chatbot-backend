@@ -1,9 +1,8 @@
 import os
 import json
-import time # Keep time, it might be used internally for delays, although less crucial without streaming
-# from datetime import datetime # No longer needed if chat streaming is removed
+import time
 import traceback
-from flask import Flask, request, jsonify # session, Response removed as chat streaming is gone
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from openai import OpenAI
 import chromadb
@@ -16,16 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in .env file.")
 
-# ASSISTANT_ID is no longer strictly needed in app.py if it's only an API endpoint
-# for Linromi to call after Linromi handles OpenAI Assistant interaction.
-# Keeping it commented out for clarity.
-# ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
-# if not ASSISTANT_ID:
-#     raise ValueError("ASSISTANT_ID not found in .env file.")
-
 app = Flask(__name__)
-# app.secret_key is no longer strictly needed if Flask sessions are not used.
-# Keeping it as it's harmless.
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "a_very_secret_key_for_dev_only")
 CORS(app) # Enable CORS for all routes
 
@@ -47,13 +37,12 @@ except Exception as e:
     product_collection = None # Set to None if collection not found
 
 # --- Valid Enum Values (Must match your products.json and tool definition) ---
-# These are used for validation and constructing filters
 VALID_GENDERS = {"male", "female", "unisex"}
 VALID_MASTER_CATEGORIES = {"top", "bottom", "accessory", "footwear", "top & foot combined"}
 VALID_SUBCATEGORIES = {
     "shirt", "t-shirt", "polo shirt", "dress", "gown", "shorts", "jeans",
     "sweater", "top", "flats", "heels", "sneakers", "boots", "sandals",
-    "jewelry", "bag", "hat", "scarf", "belt", "sunglasses", "N/A" # Include N/A if used in data
+    "jewelry", "bag", "hat", "scarf", "belt", "sunglasses", "N/A"
 }
 VALID_SEASONS = {"summer", "winter", "spring", "fall", "all-season"}
 VALID_SLEEVE_LENGTHS = {"full sleeve", "half sleeve", "quarter sleeve", "sleeveless", "strapless", "N/A"}
@@ -62,8 +51,7 @@ VALID_CATEGORIES = {"dresses", "shirts", "jeans", "tops", "footwear", "accessori
 
 # --- Tool Definitions (This part should match your *Python function signature*) ---
 # This TOOLS definition is what your `app.py` would use if it were internally calling OpenAI Assistants.
-# It should match the arguments that your `find_apparel` Python function expects directly (flattened).
-# The Linromi side's JSON schema (for data collection) is what dictates what Linromi *sends*.
+# It defines the expected arguments for the `find_apparel` Python function.
 TOOLS = [
     {
         "type": "function",
@@ -77,41 +65,41 @@ TOOLS = [
                         "type": "string",
                         "description": "A concise, descriptive natural language query summarizing the user's apparel request, including desired style, occasion, or specific features (e.g., 'stylish dress for a summer wedding', 'comfortable running shoes', 'vibrant shirt'). This is crucial for semantic search."
                     },
-                    "gender": { # Directly here, NOT nested under 'filters' for Python signature
+                    "gender": {
                         "type": "string",
                         "enum": list(VALID_GENDERS),
                         "description": "Filter by gender (male, female, unisex). This is a hard filter."
                     },
-                    "master_category": { # Directly here
+                    "master_category": {
                         "type": "string",
                         "enum": list(VALID_MASTER_CATEGORIES),
                         "description": "Filter by broad clothing category (top, bottom, accessory, footwear, top & foot combined)."
                     },
-                    "subcategory": { # Directly here
+                    "subcategory": {
                         "type": "string",
                         "enum": list(VALID_SUBCATEGORIES),
                         "description": "Filter by specific clothing subcategory (e.g., shirt, t-shirt, dress, jeans, heels, etc.)."
                     },
-                    "color": { # Directly here
+                    "color": {
                         "type": "string",
                         "description": "Filter by primary color (e.g., red, blue, black, white, multi-color). This is a soft filter, semantic search will help find similar colors."
                     },
-                    "season": { # Directly here
+                    "season": {
                         "type": "string",
                         "enum": list(VALID_SEASONS),
                         "description": "Filter by season (summer, winter, spring, fall, all-season). This is a hard filter."
                     },
-                    "sleeve_length": { # Directly here
+                    "sleeve_length": {
                         "type": "string",
                         "enum": list(VALID_SLEEVE_LENGTHS),
                         "description": "Filter by sleeve length (full sleeve, half sleeve, quarter sleeve, sleeveless, strapless). Applies to tops/dresses."
                     },
-                    "item_length": { # Directly here
+                    "item_length": {
                         "type": "string",
                         "enum": list(VALID_ITEM_LENGTHS),
                         "description": "Filter by item length (mini, short, knee-length, midi, maxi, full length). Applies to dresses/bottoms."
                     },
-                    "category": { # Directly here
+                    "category": {
                         "type": "string",
                         "enum": list(VALID_CATEGORIES),
                         "description": "Filter by general product category (e.g., 'dresses', 'shirts', 'pants'). Broader than subcategory."
@@ -122,7 +110,6 @@ TOOLS = [
         }
     }
 ]
-
 
 # --- Helper Function for Apparel Search ---
 def find_apparel(user_query: str, gender: str = None, master_category: str = None,
@@ -141,8 +128,7 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
 
     print(f"Tool Call: find_apparel(user_query='{user_query}', gender='{gender}', master_category='{master_category}', subcategory='{subcategory}', color='{color}', season='{season}', sleeve_length='{sleeve_length}', item_length='{item_length}', category='{category}')")
 
-    # Initialize found_products here (CRUCIAL FIX FOR NameError)
-    found_products = [] 
+    found_products = [] # Initialize found_products
 
     # Get query embedding
     try:
@@ -153,7 +139,6 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
         return {"products": [], "message": f"Error processing query: {e}"}
 
     # Helper to construct and clean filters
-    # This matches the Python find_apparel function signature
     def get_chromadb_filters(g, mc, sc, c, s, sl, il, cat):
         individual_filters = []
 
@@ -240,7 +225,6 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
 
     # --- Stage 2: Relax Subcategory, Color, and Item Length (Keep Gender, Master Category, Season, Category) ---
     current_filters = get_chromadb_filters(gender, master_category, None, None, season, sleeve_length, None, category)
-    # Only proceed to Stage 2 if there are meaningful filters remaining or if we started with only query
     if current_filters or (not gender and not season and not master_category and not category):
         print(f"Stage 2: Performing search with relaxed subcategory, color, lengths. Filters: {current_filters}")
         try:
@@ -273,7 +257,6 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
             return {"products": [], "message": f"Error in Stage 2 search: {e}"}
     else:
         print("Stage 2: Skipping because no relevant gender, master_category, season, or category filters were provided for this stage.")
-
 
     # --- Stage 3: Relax Master Category, Category (Keep Gender and Season as hard filters) ---
     current_filters = get_chromadb_filters(gender, None, None, None, season, None, None, None)
@@ -310,49 +293,51 @@ def find_apparel(user_query: str, gender: str = None, master_category: str = Non
     else:
         print("Stage 3: Skipping because neither gender nor season filters were provided (and no other filters apply).")
 
-
     # If no products are found after all stages, return an empty list
     print("No products found after all search stages.")
     return {"products": []}
 
-# --- NEW: API Endpoint for Linromi to call directly ---
+# --- Modified API Endpoint for Linromi to call directly ---
 @app.route('/api/find_apparel', methods=['POST'])
 def find_apparel_api():
     try:
-        raw_request_data = request.json
+        # Use request.get_json() which automatically handles application/json
+        raw_request_data = request.get_json()
         print(f"Received API call with raw data: {raw_request_data}")
 
         if not raw_request_data:
-            return jsonify({"error": "Request must be JSON"}), 400
+            return jsonify({"error": "Request body is empty or not valid JSON."}), 400
 
-        # Linromi seems to wrap the actual tool call arguments in 'apparel_search_data' and it's a STRING
-        if 'apparel_search_data' not in raw_request_data:
-            return jsonify({"error": "Missing 'apparel_search_data' key in request, check Linromi configuration."}), 400
+        arguments = {} # Initialize an empty dictionary for the tool call arguments
 
-        # Attempt to parse the nested 'apparel_search_data' string
-        try:
-            tool_call_arguments_json_str = raw_request_data['apparel_search_data']
-            # If apparel_search_data is itself a stringified JSON, parse it
-            if isinstance(tool_call_arguments_json_str, str):
-                 arguments = json.loads(tool_call_arguments_json_str)
-            else: # If Linromi somehow passes it as a dict directly
-                 arguments = tool_call_arguments_json_str
+        # --- IMPORTANT LOGIC CHANGE HERE ---
+        # Check if the request is wrapped under 'apparel_search_data' (likely from Linromi's success node)
+        # OR if it's the raw arguments directly (likely from direct Linromi 'Test Request' button)
+        if 'apparel_search_data' in raw_request_data:
+            tool_call_payload = raw_request_data['apparel_search_data']
+            if isinstance(tool_call_payload, str):
+                # If 'apparel_search_data' is a string, it means it's stringified JSON, so parse it
+                try:
+                    arguments = json.loads(tool_call_payload)
+                except json.JSONDecodeError as e:
+                    return jsonify({"error": f"Failed to parse 'apparel_search_data' string as JSON: {str(e)}"}), 400
+            elif isinstance(tool_call_payload, dict):
+                # If 'apparel_search_data' is already a dictionary, use it directly
+                arguments = tool_call_payload
+            else:
+                return jsonify({"error": "Invalid type for 'apparel_search_data'. Expected string or object."}), 400
+        else:
+            # If 'apparel_search_data' key is NOT present, assume the raw_request_data IS the arguments directly
+            arguments = raw_request_data
 
-            print(f"Parsed tool call arguments: {arguments}")
+        print(f"Parsed tool call arguments for find_apparel: {arguments}")
 
-        except json.JSONDecodeError as e:
-            return jsonify({"error": f"Failed to parse 'apparel_search_data' as JSON: {str(e)}"}), 400
-        except Exception as e:
-            return jsonify({"error": f"Error extracting arguments from 'apparel_search_data': {str(e)}"}), 400
-
-
-        # Now, arguments should be the dictionary that OpenAI Assistant would have passed directly
-        # Example: arguments = {"user_query": "...", "filters": {...}}
+        # Now, `arguments` should be the dictionary containing 'user_query' and potentially 'filters'
         user_query = arguments.get('user_query')
         if not user_query:
-            return jsonify({"error": "Missing 'user_query' in parsed arguments"}), 400
+            return jsonify({"error": "Missing 'user_query' in parsed arguments."}), 400
 
-        # Extract filters from the nested 'filters' object, defaulting to an empty dict
+        # Extract filters from the nested 'filters' object, defaulting to an empty dict if not present
         filters = arguments.get('filters', {})
 
         # Call your find_apparel function with the unpacked arguments
@@ -377,4 +362,5 @@ def find_apparel_api():
         return jsonify({"error": f"An internal server error occurred: {str(e)}"}), 500
 
 if __name__ == '__main__':
+    # Ensure debug=False in production for security
     app.run(debug=True, port=5000)
